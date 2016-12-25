@@ -33,13 +33,13 @@ Tools => Burn Bootloader
 
 
 // Fill in an unique random number:
-#define TRANSMITTER_ADDRESS     130
+#define TRANSMITTER_ADDRESS     128
 
-#define DEBUG 1
-#define WAIT_TIME_TRANSMITTER   100
-#define WAIT_TIME_RFLINK        750
-#define WAIT_TIME_NEXT          150
-#define LOOP_TIME               50
+#define DEBUG 0
+#define WAIT_TIME_TRANSMITTER   50
+#define WAIT_TIME_RFLINK        1000
+#define WAIT_TIME_NEXT          50
+#define LOOP_TIME               10
 
 #define ENCODER_PIN_A           2
 #define ENCODER_PIN_B           5
@@ -47,7 +47,7 @@ Tools => Burn Bootloader
 #define TX_POWER_PIN            9
 #define TX_DATA_PIN             11
 #define TX_PERIOD_DURATION      260
-#define TX_RETRANSMIT           3
+#define TX_RETRANSMIT           2
 #define LED_PIN                 13
 
 
@@ -100,21 +100,78 @@ if (DEBUG == 1) {
   PCintPort::attachInterrupt(ENCODER_PIN_B, &PinChangeInterrupt, CHANGE);
   
 }
-int number = 1;
+
+
 void loop() {
   delay(LOOP_TIME);
   if (DEBUG == 1) {
     Serial.print(".");
   }
+  check_pressed();
+  check_encoder();  
+  wait_and_send_command();
+  wait_and_send_command();
+  goto_sleep();
+}
+
+
+
+
+/*************************************************/
+/*   Wait a while and send last command again    */
+/*   (for RFlink)                                */
+/*************************************************/
+void wait_and_send_command() {
+  repeatcounter = WAIT_TIME_RFLINK;
   
+  // Send command again to RFlink (need long pause) and go to sleep when noting is happening
+  while ( (OldDimmerValue == DimmerValue) &&
+       (EncoderPressed == 0)&&
+       (EncoderTicksRight == 0)&&
+       (EncoderTicksLeft == 0)&&
+       (--repeatcounter > 0)
+       ) {
+    delay(1);  // wait before sending value again
+  }
   
-  
-  if (EncoderPressed > 0) {
-      if (DEBUG) {
-         Serial.println("Sending light off");
+  if (repeatcounter == 0){                   // send last command again
+    if (DimmerValue > 0 ) {
+      digitalWrite(TX_POWER_PIN, HIGH);      // Power up transmitter
+      digitalWrite(LED_PIN, HIGH);           // LED On
+      delay(WAIT_TIME_TRANSMITTER);
+      transmitter.sendDim(1, DimmerValue-1);
+      if (DEBUG == 1) {
+        Serial.print("Sending Dim: ");
+        Serial.print(DimmerValue-1);
+        Serial.print("\n");
       }
-    digitalWrite(TX_POWER_PIN, HIGH);      // Power up transmitter
-    digitalWrite(LED_PIN, HIGH);           // LED On
+    }
+    else {
+      if (DEBUG == 1) {
+        Serial.println("Sending light off");
+      }
+      digitalWrite(TX_POWER_PIN, HIGH);          // Power up transmitter
+      digitalWrite(LED_PIN, HIGH);               // LED On
+      delay(WAIT_TIME_TRANSMITTER);
+      transmitter.sendUnit(1, false);
+    }
+    digitalWrite(TX_POWER_PIN, LOW);             // Power off transmitter
+    digitalWrite(LED_PIN, LOW);                  // LED Off
+
+  }
+}
+
+
+/*************************************/
+/*     Check encoder pressed         */
+/*************************************/
+void check_pressed(){
+  if (EncoderPressed > 0) {
+    if (DEBUG) {
+       Serial.println("Sending light off");
+    }
+    digitalWrite(TX_POWER_PIN, HIGH);        // Power up transmitter
+    digitalWrite(LED_PIN, HIGH);             // LED On
     delay(WAIT_TIME_TRANSMITTER);
     transmitter.sendUnit(1, false);
     DimmerValue = 0;
@@ -125,8 +182,14 @@ void loop() {
     EncoderTicksRight = 0;
     EncoderTicksLeft = 0;
   }
-  
-  // increase light
+}
+
+
+/*************************************/
+/*     Check encoder rotation        */
+/*************************************/
+void check_encoder() { 
+    // increase light
   while (EncoderTicksRight > 0) {
     if (DimmerValue < 16) {
       DimmerValue += 1;
@@ -173,45 +236,19 @@ void loop() {
     digitalWrite(LED_PIN, LOW);               // LED Off
     delay(WAIT_TIME_NEXT);                    // wait before sending new value.
   }
+ }
 
-    
-  repeatcounter = WAIT_TIME_RFLINK;
-  
-  // Send command again to RFlink (need long pause) and go to sleep when noting is happening
-  while ( (OldDimmerValue == DimmerValue) &&
-       (EncoderPressed == 0)&&
-       (EncoderTicksRight == 0)&&
-       (EncoderTicksLeft == 0)&&
-       (--repeatcounter > 0)
-       ) {
 
-    delay(1);  // wait before sending value again
-  }
-  
-  if (repeatcounter == 0){                   // send last command again
-    if (DimmerValue > 0 ) {
-      digitalWrite(TX_POWER_PIN, HIGH);      // Power up transmitter
-      digitalWrite(LED_PIN, HIGH);           // LED On
-      delay(WAIT_TIME_TRANSMITTER);
-      transmitter.sendDim(1, DimmerValue-1);
-      if (DEBUG == 1) {
-        Serial.print("Sending Dim: ");
-        Serial.print(DimmerValue-1);
-        Serial.print("\n");
-      }
-    }
-    else {
-      if (DEBUG == 1) {
-        Serial.println("Sending light off");
-      }
-      digitalWrite(TX_POWER_PIN, HIGH);          // Power up transmitter
-      digitalWrite(LED_PIN, HIGH);               // LED On
-      delay(WAIT_TIME_TRANSMITTER);
-      transmitter.sendUnit(1, false);
-    }
-    digitalWrite(TX_POWER_PIN, LOW);             // Power off transmitter
-    digitalWrite(LED_PIN, LOW);                  // LED Off
-  
+
+
+/******************************************/
+/* Go to sleep when nothing is happening  */
+/******************************************/
+void goto_sleep() { 
+ if ( (OldDimmerValue == DimmerValue) &&
+      (EncoderPressed == 0)&&
+      (EncoderTicksRight == 0)&&
+      (EncoderTicksLeft == 0) ) {
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     cli();
     sleep_enable();
@@ -224,13 +261,14 @@ void loop() {
     
     /* wake up here */
     sleep_disable();
-    
   }
 }
 
 
 
-// Encoder interrupt routines. 
+/*************************************/
+/*    Encoder interrupt routines     */
+/*************************************/
 void ExtInterrupt() {
  int state = digitalRead(ENCODER_PIN_B) & 0x01;
   state += (digitalRead(ENCODER_PIN_A) << 1) & 0x02;
@@ -254,6 +292,7 @@ void PressInterrupt(){
   }
   
 }
+
 
 
 
