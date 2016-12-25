@@ -33,9 +33,9 @@ Tools => Burn Bootloader
 
 
 // Fill in an unique random number:
-#define TRANSMITTER_ADDRESS     128
+#define TRANSMITTER_ADDRESS     130
 
-#define DEBUG 0
+#define DEBUG 1
 #define WAIT_TIME_TRANSMITTER   100
 #define WAIT_TIME_RFLINK        750
 #define WAIT_TIME_NEXT          150
@@ -106,37 +106,24 @@ void loop() {
   if (DEBUG == 1) {
     Serial.print(".");
   }
+  
+  
+  
   if (EncoderPressed > 0) {
-    if  (DimmerValue > 0) {	
-
       if (DEBUG) {
          Serial.println("Sending light off");
       }
-      digitalWrite(TX_POWER_PIN, HIGH);      // Power up transmitter
-      digitalWrite(LED_PIN, HIGH);           // LED On
-      delay(WAIT_TIME_TRANSMITTER);
-      transmitter.sendUnit(1, false);
-      DimmerValue = 0;
-      OldDimmerValue = 0;
-    }
-    else {
-      if (DEBUG) {
-         Serial.println("Sending light on");
-      }
-      digitalWrite(TX_POWER_PIN, HIGH);      // Power up transmitter
-      digitalWrite(LED_PIN, HIGH);           // LED On
-      delay(WAIT_TIME_TRANSMITTER);
-      DimmerValue = 15;
-      OldDimmerValue = 15;
-      transmitter.sendDim(1, DimmerValue-1);
-      Serial.print(DimmerValue-1);
-   }
-   digitalWrite(TX_POWER_PIN, LOW);          // Power off transmitter
-   digitalWrite(LED_PIN, LOW);               // LED Off
-   EncoderPressed = 0;
-   delay(WAIT_TIME_NEXT);
-   EncoderTicksRight = 0;
-   EncoderTicksLeft = 0;
+    digitalWrite(TX_POWER_PIN, HIGH);      // Power up transmitter
+    digitalWrite(LED_PIN, HIGH);           // LED On
+    delay(WAIT_TIME_TRANSMITTER);
+    transmitter.sendUnit(1, false);
+    DimmerValue = 0;
+    digitalWrite(TX_POWER_PIN, LOW);          // Power off transmitter
+    digitalWrite(LED_PIN, LOW);               // LED Off
+    EncoderPressed = 0;
+    delay(WAIT_TIME_NEXT);
+    EncoderTicksRight = 0;
+    EncoderTicksLeft = 0;
   }
   
   // increase light
@@ -187,14 +174,12 @@ void loop() {
     delay(WAIT_TIME_NEXT);                    // wait before sending new value.
   }
 
-
+    
   repeatcounter = WAIT_TIME_RFLINK;
   
   // Send command again to RFlink (need long pause) and go to sleep when noting is happening
-  while ( (OldDimmerValue = DimmerValue) &&
-       (digitalRead(ENCODER_PIN_A) == 1)&&
-       (digitalRead(ENCODER_PIN_B) == 1)&&
-       (digitalRead(ENCODER_PRESS_PIN) == 1)&&
+  while ( (OldDimmerValue == DimmerValue) &&
+       (EncoderPressed == 0)&&
        (EncoderTicksRight == 0)&&
        (EncoderTicksLeft == 0)&&
        (--repeatcounter > 0)
